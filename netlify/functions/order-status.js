@@ -5,6 +5,7 @@
 //   ?usuarioId=xxx  → todas las órdenes del usuario (para el dashboard)
 
 import { createClient } from '@supabase/supabase-js'
+import { createLogger, errorBody } from './_lib/logger.js'
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',
@@ -14,18 +15,25 @@ const CORS_HEADERS = {
 }
 
 export async function handler(event) {
+  const log = createLogger('order-status')
+
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: CORS_HEADERS, body: '' }
   }
 
   if (event.httpMethod !== 'GET') {
-    return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Método no permitido' }) }
+    return { statusCode: 405, headers: CORS_HEADERS, body: errorBody(log, 'Método no permitido') }
   }
 
   const { orderId, usuarioId } = event.queryStringParameters || {}
 
   if (!orderId && !usuarioId) {
-    return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'orderId o usuarioId requerido' }) }
+    log.warn('Consulta sin orderId ni usuarioId')
+    return {
+      statusCode: 400,
+      headers: CORS_HEADERS,
+      body: errorBody(log, 'orderId o usuarioId requerido'),
+    }
   }
 
   const supabase = createClient(
@@ -36,6 +44,7 @@ export async function handler(event) {
 
   // ── Modo 1: consulta por orderId ─────────────────────────────────────────
   if (orderId) {
+    log.info('Consulta por orderId', { orderId })
     const { data, error } = await supabase
       .from('ordenes')
       .select('order_id, status, monto_mxn, deposit_clabe, updated_at')
@@ -43,7 +52,11 @@ export async function handler(event) {
       .single()
 
     if (error || !data) {
-      return { statusCode: 404, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Orden no encontrada' }) }
+      return {
+        statusCode: 404,
+        headers: CORS_HEADERS,
+        body: errorBody(log, 'Orden no encontrada'),
+      }
     }
 
     return {
@@ -59,6 +72,7 @@ export async function handler(event) {
   }
 
   // ── Modo 2: consulta por usuarioId ───────────────────────────────────────
+  log.info('Consulta por usuarioId', { usuarioId })
   const { data, error } = await supabase
     .from('ordenes')
     .select('order_id, status, monto_mxn, deposit_clabe, created_at, updated_at')
@@ -66,7 +80,12 @@ export async function handler(event) {
     .order('created_at', { ascending: false })
 
   if (error) {
-    return { statusCode: 500, headers: CORS_HEADERS, body: JSON.stringify({ error: error.message }) }
+    log.error('Error consultando órdenes', { usuarioId, detail: error.message })
+    return {
+      statusCode: 500,
+      headers: CORS_HEADERS,
+      body: errorBody(log, error.message),
+    }
   }
 
   // Calcular totales

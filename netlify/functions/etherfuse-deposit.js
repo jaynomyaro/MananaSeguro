@@ -22,6 +22,7 @@ import {
   validateKyc,
   validateUserId
 } from './_lib/depositValidation.js'
+import { createLogger, errorBody } from './_lib/logger.js'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ async function llamarEtherfuse(path, method, body) {
 // ─── Handler principal ────────────────────────────────────────────────────────
 
 export async function handler(event) {
+  const log = createLogger('etherfuse-deposit')
 
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: CORS_HEADERS, body: '' }
@@ -90,17 +92,17 @@ export async function handler(event) {
     return {
       statusCode: 405,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Método no permitido' }),
+      body: errorBody(log, 'Método no permitido'),
     }
   }
 
   // ── Validar env ───────────────────────────────────────────────────────────
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY || !process.env.ETHERFUSE_API_KEY) {
-    console.error('[etherfuse-deposit] Variables de entorno faltantes')
+    log.error('Variables de entorno faltantes')
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Error de configuración del servidor' }),
+      body: errorBody(log, 'Error de configuración del servidor'),
     }
   }
 
@@ -117,7 +119,7 @@ export async function handler(event) {
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: err.message }),
+      body: errorBody(log, err.message),
     }
   }
 
@@ -139,7 +141,7 @@ export async function handler(event) {
       return {
         statusCode: 404,
         headers: CORS_HEADERS,
-        body: JSON.stringify({ error: 'Usuario no encontrado' }),
+        body: errorBody(log, 'Usuario no encontrado'),
       }
     }
 
@@ -150,8 +152,7 @@ export async function handler(event) {
       return {
         statusCode: 403,
         headers: CORS_HEADERS,
-        body: JSON.stringify({
-          error: 'KYC pendiente',
+        body: errorBody(log, 'KYC pendiente', {
           mensaje: 'Debes completar la verificación de identidad antes de depositar.',
           kycStatus: usuario.kyc_status,
         }),
@@ -162,8 +163,7 @@ export async function handler(event) {
       return {
         statusCode: 403,
         headers: CORS_HEADERS,
-        body: JSON.stringify({
-          error: 'Cuenta bancaria pendiente',
+        body: errorBody(log, 'Cuenta bancaria pendiente', {
           mensaje: 'Tu cuenta bancaria aún está en verificación. Intenta en unos minutos.',
           bankAccountStatus: usuario.bank_account_status,
         }),
@@ -186,7 +186,7 @@ export async function handler(event) {
       walletAddress: usuario.stellar_public_key,
     })
 
-    console.info('[etherfuse-deposit] Quote creado:', quoteId, '| Monto:', montoMxn, 'MXN')
+    log.info('Quote creado', { quoteId, montoMxn })
 
     // ── Paso 2: crear orden en Etherfuse ──────────────────────────────────
     // POST /ramp/order — devuelve depositClabe (CLABE única por orden)
@@ -208,7 +208,7 @@ export async function handler(event) {
       throw new Error('Etherfuse no devolvió depositClabe')
     }
 
-    console.info('[etherfuse-deposit] Orden creada:', orderId, '| CLABE:', depositClabe)
+    log.info('Orden creada', { orderId, depositClabe })
 
     // ── Paso 3: guardar orden en Supabase ─────────────────────────────────
     // Guardamos ANTES de responder al cliente — si el cliente cae, la orden
@@ -225,7 +225,7 @@ export async function handler(event) {
       })
 
     if (errorOrden) {
-      console.error('[etherfuse-deposit] Error al guardar orden:', errorOrden.message)
+      log.error('Error al guardar orden', { orderId, detail: errorOrden.message })
       // No es fatal — la orden existe en Etherfuse aunque falle Supabase
       // El webhook la recuperará cuando llegue el SPEI
     }
@@ -254,12 +254,11 @@ export async function handler(event) {
     }
 
   } catch (err) {
-    console.error('[etherfuse-deposit] Error:', err.message)
+    log.error('Error creando depósito', { detail: err.message })
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({
-        error: 'No se pudo crear la orden de depósito',
+      body: errorBody(log, 'No se pudo crear la orden de depósito', {
         detalle: process.env.ETHERFUSE_ENV === 'sandbox' ? err.message : undefined,
       }),
     }

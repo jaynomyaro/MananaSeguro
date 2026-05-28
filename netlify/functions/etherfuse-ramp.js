@@ -2,6 +2,8 @@
 // Variables de entorno requeridas (Netlify dashboard > Environment variables):
 //   ETHERFUSE_API_KEY  → tu API key de devnet.etherfuse.com
 
+import { createLogger, errorBody } from './_lib/logger.js'
+
 const SANDBOX_URL = 'https://api.sand.etherfuse.com'
 const PROD_URL    = 'https://api.etherfuse.com'
 
@@ -41,6 +43,8 @@ async function callRampApi(path, method = 'GET', body = null) {
 
 //  Handler principal 
 export async function handler(event) {
+  const log = createLogger('etherfuse-ramp')
+
   // Preflight CORS
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: CORS_HEADERS, body: '' }
@@ -61,7 +65,7 @@ export async function handler(event) {
         }
       })
       const text = await res.text()
-      console.log('[assets raw]', text)  // ver qué devuelve
+      log.info('Respuesta de assets', { status: res.status, byteLength: text.length })
       result = JSON.parse(text)
     }
     //  POST /quote — cotización MXN → MXNe o MXN → CETES
@@ -72,7 +76,7 @@ export async function handler(event) {
         return {
           statusCode: 400,
           headers: CORS_HEADERS,
-          body: JSON.stringify({ error: 'Faltan campos: walletAddress, amountMxn, targetAsset, customerId' }),
+          body: errorBody(log, 'Faltan campos: walletAddress, amountMxn, targetAsset, customerId'),
         }
       }
 
@@ -98,7 +102,7 @@ export async function handler(event) {
         return {
           statusCode: 400,
           headers: CORS_HEADERS,
-          body: JSON.stringify({ error: 'Faltan campos: quoteId, bankAccountId, cryptoWalletId' }),
+          body: errorBody(log, 'Faltan campos: quoteId, bankAccountId, cryptoWalletId'),
         }
       }
 
@@ -120,7 +124,7 @@ export async function handler(event) {
         return {
           statusCode: 400,
           headers: CORS_HEADERS,
-          body: JSON.stringify({ error: 'Falta orderId' }),
+          body: errorBody(log, 'Falta orderId'),
         }
       }
       result = await callRampApi(`/ramp/order/${orderId}`)
@@ -136,7 +140,7 @@ export async function handler(event) {
         return {
           statusCode: 400,
           headers: CORS_HEADERS,
-          body: JSON.stringify({ error: 'Faltan campos: walletAddress, email' }),
+          body: errorBody(log, 'Faltan campos: walletAddress, email'),
         }
       }
 
@@ -156,7 +160,7 @@ export async function handler(event) {
         return {
           statusCode: 400,
           headers: CORS_HEADERS,
-          body: JSON.stringify({ error: 'Faltan campos: customerId, walletAddress' }),
+          body: errorBody(log, 'Faltan campos: customerId, walletAddress'),
         }
       }
       result = await callRampApi(`/ramp/customer/${customerId}/kyc/${walletAddress}`)
@@ -168,8 +172,7 @@ export async function handler(event) {
       return {
         statusCode: 400,
         headers: CORS_HEADERS,
-        body: JSON.stringify({
-          error: 'Acción no válida',
+        body: errorBody(log, 'Acción no válida', {
           acciones_disponibles: ['assets', 'quote', 'order', 'order-status', 'kyc-url', 'kyc-status'],
         }),
       }
@@ -182,11 +185,11 @@ export async function handler(event) {
     }
 
   } catch (err) {
-    console.error('[etherfuse-ramp]', err.message)
+    log.error('Error en ramp proxy', { detail: err.message, action })
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: err.message }),
+      body: errorBody(log, err.message),
     }
   }
 }

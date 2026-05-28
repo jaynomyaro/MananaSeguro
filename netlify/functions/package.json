@@ -1,0 +1,11 @@
+{
+  "name": "manana-seguro-netlify-functions",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

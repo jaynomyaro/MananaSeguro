@@ -6,6 +6,7 @@
 //   WEBHOOK_URL           → URL pública del webhook (ngrok en dev, netlify en prod)
 
 import { createClient } from '@supabase/supabase-js'
+import { createLogger, errorBody } from './_lib/logger.js'
 
 //  Constantes 
 
@@ -68,6 +69,7 @@ async function llamarEtherfuse(path, method, body) {
 //  Handler principal 
 
 export async function handler(event) {
+  const log = createLogger('etherfuse-onboarding')
 
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: CORS_HEADERS, body: '' }
@@ -77,7 +79,7 @@ export async function handler(event) {
     return {
       statusCode: 405,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Método no permitido' }),
+      body: errorBody(log, 'Método no permitido'),
     }
   }
 
@@ -85,11 +87,11 @@ export async function handler(event) {
   const { SUPABASE_URL, SUPABASE_SERVICE_KEY, ETHERFUSE_API_KEY, WEBHOOK_URL } = process.env
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !ETHERFUSE_API_KEY) {
-    console.error('[etherfuse-onboarding] Variables de entorno faltantes')
+    log.error('Variables de entorno faltantes')
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Error de configuración del servidor' }),
+      body: errorBody(log, 'Error de configuración del servidor'),
     }
   }
 
@@ -103,7 +105,7 @@ export async function handler(event) {
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: `Body inválido: ${err.message}` }),
+      body: errorBody(log, `Body inválido: ${err.message}`),
     }
   }
 
@@ -123,7 +125,7 @@ export async function handler(event) {
       return {
         statusCode: 404,
         headers: CORS_HEADERS,
-        body: JSON.stringify({ error: 'Usuario no encontrado' }),
+        body: errorBody(log, 'Usuario no encontrado'),
       }
     }
 
@@ -160,7 +162,7 @@ export async function handler(event) {
       throw new Error('Etherfuse no devolvió presigned_url')
     }
 
-    console.info('[etherfuse-onboarding] URL generada para usuario:', usuario.email)
+    log.info('URL de onboarding generada', { usuarioId })
 
     return {
       statusCode: 200,
@@ -174,11 +176,11 @@ export async function handler(event) {
     }
 
   } catch (err) {
-    console.error('[etherfuse-onboarding] Error:', err.message)
+    log.error('Error generando onboarding', { detail: err.message })
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: `Error al generar URL de onboarding: ${err.message}` }),
+      body: errorBody(log, `Error al generar URL de onboarding: ${err.message}`),
     }
   }
 }

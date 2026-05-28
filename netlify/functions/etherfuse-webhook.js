@@ -4,6 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { createLogger, errorBody } from './_lib/logger.js'
 
 //  Constantes 
 
@@ -48,11 +49,11 @@ function verificarFirma(body, firmaRecibida, secreto) {
  * kyc_updated: el usuario completó (o falló) el KYC en Etherfuse.
  * Actualiza kyc_status y bank_account_status en Supabase.
  */
-async function handleKycUpdated(payload, supabase) {
+async function handleKycUpdated(payload, supabase, log) {
   const { customerId, kycStatus, bankAccountId, bankAccountStatus } = payload
 
   if (!customerId) {
-    console.warn('[webhook] kyc_updated sin customerId')
+    log.warn('kyc_updated sin customerId')
     return
   }
 
@@ -71,9 +72,9 @@ async function handleKycUpdated(payload, supabase) {
     .eq('customer_id', customerId)
 
   if (error) {
-    console.error('[webhook] Error actualizando KYC:', error.message)
+    log.error('Error actualizando KYC', { customerId, detail: error.message })
   } else {
-    console.info('[webhook] KYC actualizado:', customerId, '→', kycStatus)
+    log.info('KYC actualizado', { customerId, kycStatus })
   }
 }
 
@@ -82,11 +83,11 @@ async function handleKycUpdated(payload, supabase) {
  * Estados: created → funded → completed
  * Cuando es 'completed', el usuario ya tiene sus CETES en Stellar.
  */
-async function handleOrderUpdated(payload, supabase) {
+async function handleOrderUpdated(payload, supabase, log) {
   const { orderId, status, stellarClaimTransaction } = payload
 
   if (!orderId) {
-    console.warn('[webhook] order_updated sin orderId')
+    log.warn('order_updated sin orderId')
     return
   }
 
@@ -107,9 +108,9 @@ async function handleOrderUpdated(payload, supabase) {
     .eq('order_id', orderId)
 
   if (error) {
-    console.error('[webhook] Error actualizando orden:', error.message)
+    log.error('Error actualizando orden', { orderId, detail: error.message })
   } else {
-    console.info('[webhook] Orden actualizada:', orderId, '→', status)
+    log.info('Orden actualizada', { orderId, status })
 
     // TODO cuando status === 'completed':
     // 1. Si hay stellarClaimTransaction → firmarla con la llave custodial
@@ -121,13 +122,14 @@ async function handleOrderUpdated(payload, supabase) {
 //  Handler principal ──
 
 export async function handler(event) {
+  const log = createLogger('etherfuse-webhook')
 
   // Solo acepta POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Método no permitido' }),
+      body: errorBody(log, 'Método no permitido'),
     }
   }
 
@@ -137,11 +139,11 @@ export async function handler(event) {
   const secreto2 = process.env.WEBHOOK_SECRET_2
 
   if (!secreto1) {
-    console.error('[webhook] WEBHOOK_SECRET no configurado')
+    log.error('WEBHOOK_SECRET no configurado')
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Error de configuración' }),
+      body: errorBody(log, 'Error de configuración'),
     }
   }
 
@@ -152,11 +154,11 @@ export async function handler(event) {
                       (secreto2 && verificarFirma(bodyRaw, firma, secreto2))
 
   if (!firmaValida) {
-    console.warn('[webhook] Firma inválida — posible request no autorizado')
+    log.warn('Firma inválida — posible request no autorizado')
     return {
       statusCode: 401,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Firma inválida' }),
+      body: errorBody(log, 'Firma inválida'),
     }
   }
 
@@ -168,7 +170,7 @@ export async function handler(event) {
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Body inválido — se esperaba JSON' }),
+      body: errorBody(log, 'Body inválido — se esperaba JSON'),
     }
   }
 
@@ -178,11 +180,11 @@ export async function handler(event) {
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Falta campo "type" en el webhook' }),
+      body: errorBody(log, 'Falta campo "type" en el webhook'),
     }
   }
 
-  console.info('[webhook] Evento recibido:', type)
+  log.info('Evento recibido', { type })
 
   // ── Responder 200 inmediatamente a Etherfuse 
   // ISO 25010 Fiabilidad: Etherfuse reintenta si no recibe 200 rápido.
@@ -197,21 +199,21 @@ export async function handler(event) {
   try {
     switch (type) {
       case 'kyc_updated':
-        await handleKycUpdated(data || payload, supabase)
+        await handleKycUpdated(data || payload, supabase, log)
         break
 
       case 'order_updated':
-        await handleOrderUpdated(data || payload, supabase)
+        await handleOrderUpdated(data || payload, supabase, log)
         break
 
       default:
         // Loguear eventos desconocidos sin fallar — futuros eventos de Etherfuse
-        console.info('[webhook] Evento no manejado (ignorado):', type)
+        log.info('Evento no manejado (ignorado)', { type })
     }
   } catch (err) {
     // Loguear pero responder 200 de todas formas
     // Etherfuse no debe reintentar por errores internos nuestros
-    console.error('[webhook] Error procesando evento:', type, err.message)
+    log.error('Error procesando evento', { type, detail: err.message })
   }
 
   return {

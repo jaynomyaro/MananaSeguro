@@ -37,6 +37,60 @@ MananaSeguro/
     └── cetes-rate.js        # CORS proxy for the Etherfuse API
 ```
 
+### Flujo de depósito SPEI → Stellar / SPEI → Stellar deposit flow
+
+El usuario inicia un depósito desde el frontend, que solicita una CLABE a Etherfuse. El usuario transfiere pesos vía SPEI a esa CLABE. Etherfuse confirma el pago, notifica a nuestro webhook, que registra la orden en Supabase y acredita USDC en la wallet Stellar del usuario.
+
+> The user starts a deposit from the frontend, which requests a CLABE from Etherfuse. The user sends MXN via SPEI to that CLABE. Etherfuse confirms payment, notifies our webhook, which records the order in Supabase and credits USDC to the user's Stellar wallet.
+
+```mermaid
+sequenceDiagram
+    actor Usuario
+    participant Frontend as DepositFlow (Frontend)
+    participant API as /api/etherfuse/deposit
+    participant Etherfuse as Etherfuse API
+    participant Banco as Banco del Usuario
+    participant Webhook as Webhook (Netlify fn)
+    participant Supabase
+    participant Stellar
+
+    Usuario->>Frontend: Ingresa monto y confirma depósito
+    Frontend->>API: POST /api/etherfuse/deposit { amount, userId }
+    API->>Etherfuse: Crear orden de depósito
+    Etherfuse-->>API: CLABE + orderId
+    API-->>Frontend: CLABE + orderId
+    Frontend-->>Usuario: Muestra CLABE para transferencia SPEI
+
+    Usuario->>Banco: Transfiere MXN vía SPEI a la CLABE
+    Banco->>Etherfuse: Liquidación SPEI
+    Etherfuse->>Webhook: POST /webhook { orderId, status: "payment_received" }
+    Webhook->>Supabase: Actualiza orden → completed
+    Webhook->>Stellar: Acredita USDC en wallet del usuario
+    Stellar-->>Usuario: Balance USDC actualizado ✅
+```
+
+### Máquina de estados de la orden / Order state machine
+
+Cada depósito pasa por los siguientes estados. Si el pago no llega o es rechazado, la orden puede terminar en `failed` o `cancelled`.
+
+> Each deposit transitions through the following states. If payment is not received or is rejected, the order may end in `failed` or `cancelled`.
+
+```mermaid
+flowchart LR
+    A([created]) --> B([pending_payment])
+    B --> C([payment_received])
+    C --> D([completed])
+    B --> E([cancelled])
+    C --> F([failed])
+
+    style A fill:#6c757d,color:#fff
+    style B fill:#ffc107,color:#000
+    style C fill:#0d6efd,color:#fff
+    style D fill:#198754,color:#fff
+    style E fill:#dc3545,color:#fff
+    style F fill:#dc3545,color:#fff
+```
+
 ---
 
 ## Tech stack

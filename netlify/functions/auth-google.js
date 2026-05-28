@@ -9,6 +9,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
+import { createLogger, errorBody } from './_lib/logger.js'
 
 //  Constantes 
 
@@ -117,6 +118,7 @@ async function verificarTokenGoogle(idToken) {
 //  Handler principal ──
 
 export async function handler(event) {
+  const log = createLogger('auth-google')
 
   // Preflight CORS
   if (event.httpMethod === 'OPTIONS') {
@@ -128,7 +130,7 @@ export async function handler(event) {
     return {
       statusCode: 405,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Método no permitido' }),
+      body: errorBody(log, 'Método no permitido'),
     }
   }
 
@@ -136,20 +138,20 @@ export async function handler(event) {
   const { SUPABASE_URL, SUPABASE_SERVICE_KEY, WALLET_ENCRYPTION_KEY } = process.env
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    console.error('[auth-google] Variables de Supabase no configuradas')
+    log.error('Variables de Supabase no configuradas')
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Error de configuración del servidor' }),
+      body: errorBody(log, 'Error de configuración del servidor'),
     }
   }
 
   if (!WALLET_ENCRYPTION_KEY || WALLET_ENCRYPTION_KEY.length !== 64) {
-    console.error('[auth-google] WALLET_ENCRYPTION_KEY inválida')
+    log.error('WALLET_ENCRYPTION_KEY inválida')
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Error de configuración del servidor' }),
+      body: errorBody(log, 'Error de configuración del servidor'),
     }
   }
 
@@ -163,7 +165,7 @@ export async function handler(event) {
     return {
       statusCode: 400,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: `Body inválido: ${err.message}` }),
+      body: errorBody(log, `Body inválido: ${err.message}`),
     }
   }
 
@@ -172,11 +174,11 @@ export async function handler(event) {
   try {
     usuarioGoogle = await verificarTokenGoogle(idToken)
   } catch (err) {
-    console.warn('[auth-google] Token inválido:', err.message)
+    log.warn('Token inválido', { detail: err.message })
     return {
       statusCode: 401,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: `Autenticación fallida: ${err.message}` }),
+      body: errorBody(log, `Autenticación fallida: ${err.message}`),
     }
   }
 
@@ -201,7 +203,7 @@ export async function handler(event) {
 
     // ── Usuario ya existe — devolver sus datos 
     if (usuarioExistente) {
-      console.info('[auth-google] Usuario existente:', usuarioExistente.email)
+      log.info('Usuario existente', { usuarioId: usuarioExistente.id })
       return {
         statusCode: 200,
         headers: CORS_HEADERS,
@@ -222,7 +224,7 @@ export async function handler(event) {
     }
 
     // ── Usuario nuevo — crear wallet Stellar + registro en DB 
-    console.info('[auth-google] Creando usuario nuevo:', usuarioGoogle.email)
+    log.info('Creando usuario nuevo', { googleId: usuarioGoogle.googleId })
 
     const wallet = await generarWalletStellar()
     const secretKeyCifrada = cifrar(wallet.secretKey)
@@ -248,7 +250,7 @@ export async function handler(event) {
       throw new Error(`Error al crear usuario: ${errorCreacion.message}`)
     }
 
-    console.info('[auth-google] Usuario creado:', usuarioCreado.email)
+    log.info('Usuario creado', { usuarioId: usuarioCreado.id })
 
     return {
       statusCode: 201,
@@ -269,11 +271,11 @@ export async function handler(event) {
     }
 
   } catch (err) {
-    console.error('[auth-google] Error inesperado:', err.message)
+    log.error('Error inesperado', { detail: err.message })
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ error: 'Error interno del servidor' }),
+      body: errorBody(log, 'Error interno del servidor'),
     }
   }
 }

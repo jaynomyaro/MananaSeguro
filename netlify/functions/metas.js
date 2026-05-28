@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from '@supabase/supabase-js'
+import { createLogger, errorBody, withRequestId } from './_lib/logger.js'
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',
@@ -270,6 +271,8 @@ async function handleDelete(event) {
 // ─── Handler principal ────────────────────────────────────────────────────────
 
 export async function handler(event) {
+  const log = createLogger('metas')
+
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: CORS_HEADERS, body: '' }
   }
@@ -283,18 +286,21 @@ export async function handler(event) {
       case 'PATCH':  result = await handlePatch(event);  break
       case 'DELETE': result = await handleDelete(event); break
       default:
-        return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Método no permitido' }) }
+        return {
+          statusCode: 405,
+          headers: CORS_HEADERS,
+          body: errorBody(log, 'Método no permitido'),
+        }
     }
 
-    return { ...result, headers: CORS_HEADERS }
+    return { ...withRequestId(log, result), headers: CORS_HEADERS }
 
   } catch (err) {
-    console.error('[metas] Error inesperado:', err.message)
+    log.error('Error inesperado', { detail: err.message })
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
-      body: JSON.stringify({
-        error: 'Error interno del servidor',
+      body: errorBody(log, 'Error interno del servidor', {
         detalle: process.env.ETHERFUSE_ENV === 'sandbox' ? err.message : undefined,
       }),
     }

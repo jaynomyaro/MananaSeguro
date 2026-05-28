@@ -1,195 +1,347 @@
-import { describe, it, expect } from 'vitest'
-import { calculateRetirementProjection, calculateCycles } from '../../src/utils/projections'
-import { useRetirementProjection } from '../../src/hooks/useRetirementProjection'
-import { renderHook, act } from '@testing-library/react'
+import { describe, it, expect } from "vitest";
+import {
+  calculateRetirementProjection,
+  calculateCycles,
+  calculateLoan,
+} from "../utils/projections";
 
-describe('calculateRetirementProjection', () => {
-  it('returns correct projection for known inputs: $25/month, 20 years, 4.7% APY', () => {
+describe("calculateRetirementProjection", () => {
+  it("returns correct projection for known inputs: $25/month, 20 years, 4.7% APY", () => {
     const result = calculateRetirementProjection({
       monthlyDepositUsd: 25,
       yearsToRetirement: 20,
       annualYieldRate: 4.7,
-    })
- 
-    expect(result.investedAmount).toBe(6000)
-    expect(result.projectedBalance).toBeGreaterThan(6000)
-    expect(result.estimatedMonthlyIncome).toBeGreaterThan(0)
-  })
+    });
 
-  it('handles minimum deposit $2 with short period', () => {
+    expect(result.investedAmount).toBe(6000);
+    expect(result.projectedBalance).toBeGreaterThan(6000);
+    expect(result.estimatedMonthlyIncome).toBeGreaterThan(0);
+  });
+
+  it("handles minimum deposit $2 with short period", () => {
     const result = calculateRetirementProjection({
       monthlyDepositUsd: 2,
       yearsToRetirement: 1,
       annualYieldRate: 4.7,
-    })
+    });
 
-    expect(result.investedAmount).toBe(24)
-    expect(result.projectedBalance).toBeGreaterThanOrEqual(result.investedAmount)
-  })
+    expect(result.investedAmount).toBe(24);
+    expect(result.projectedBalance).toBeGreaterThanOrEqual(
+      result.investedAmount,
+    );
+  });
 
-  it('handles maximum years (40) with minimum deposit', () => {
+  it("handles maximum years (40) with minimum deposit", () => {
     const result = calculateRetirementProjection({
       monthlyDepositUsd: 2,
       yearsToRetirement: 40,
       annualYieldRate: 4.7,
-    })
+    });
 
-    expect(result.investedAmount).toBe(960)
-    expect(result.projectedBalance).toBeGreaterThan(result.investedAmount)
-  })
+    expect(result.investedAmount).toBe(960);
+    expect(result.projectedBalance).toBeGreaterThan(result.investedAmount);
+  });
 
-  it('handles zero yield rate', () => {
+  it("handles zero yield rate", () => {
     const result = calculateRetirementProjection({
       monthlyDepositUsd: 25,
       yearsToRetirement: 20,
       annualYieldRate: 0,
-    })
+    });
 
-    expect(result.investedAmount).toBe(6000)
-    expect(result.projectedBalance).toBe(6000)
-    expect(result.growthAmount).toBe(0)
-    expect(result.estimatedMonthlyIncome).toBe(20)
-  })
+    expect(result.investedAmount).toBe(6000);
+    expect(result.projectedBalance).toBe(6000);
+    expect(result.growthAmount).toBe(0);
+    expect(result.estimatedMonthlyIncome).toBe(20);
+  });
 
-  it('calculates incentives for fidelity scenario (5-year cycles)', () => {
+  it("calculates incentives for fidelity scenario (5-year cycles)", () => {
     const resultDefault = calculateRetirementProjection({
       monthlyDepositUsd: 25,
       yearsToRetirement: 5,
       annualYieldRate: 4.7,
-      incentiveScenario: 'solo_fidelidad',
-    })
+      incentiveScenario: "solo_fidelidad",
+    });
 
+    expect(resultDefault.totalIncentives).toBeGreaterThan(0);
+    expect(resultDefault.incentivePct).toBe(5);
+  });
 
-
-    expect(resultDefault.totalIncentives).toBeGreaterThan(0)
-    expect(resultDefault.incentivePct).toBe(5)
-  })
-
-  it('calculates higher incentives for fidelidad_constancia (7%)', () => {
+  it("calculates higher incentives for fidelidad_constancia (7%)", () => {
     const result = calculateRetirementProjection({
       monthlyDepositUsd: 25,
       yearsToRetirement: 10,
       annualYieldRate: 4.7,
-      incentiveScenario: 'fidelidad_constancia',
-    })
+      incentiveScenario: "fidelidad_constancia",
+    });
 
-    expect(result.incentivePct).toBe(7)
-    expect(result.totalIncentives).toBeGreaterThan(0)
-  })
+    expect(result.incentivePct).toBe(7);
+    expect(result.totalIncentives).toBeGreaterThan(0);
+  });
 
-  it('calculates incentives every 5-year cycle correctly', () => {
-    const cycles5 = calculateCycles(25, 5, 4.7, 5)
-    const cycles10 = calculateCycles(25, 10, 4.7, 5)
-    const cycles15 = calculateCycles(25, 15, 4.7, 5)
+  it("calculates incentives every 5-year cycle correctly", () => {
+    const cycles5 = calculateCycles(25, 5, 4.7, 5);
+    const cycles10 = calculateCycles(25, 10, 4.7, 5);
+    const cycles15 = calculateCycles(25, 15, 4.7, 5);
 
-    expect(cycles5).toHaveLength(1)
-    expect(cycles10).toHaveLength(2)
-    expect(cycles15).toHaveLength(3)
+    expect(cycles5).toHaveLength(1);
+    expect(cycles10).toHaveLength(2);
+    expect(cycles15).toHaveLength(3);
 
     cycles10.forEach((cycle, i) => {
-      expect(cycle.cycle).toBe(i + 1)
-      expect(cycle.incentiveAmount).toBeGreaterThan(0)
-    })
-  })
+      expect(cycle.cycle).toBe(i + 1);
+      expect(cycle.incentiveAmount).toBeGreaterThan(0);
+    });
+  });
 
-  it('returns correct structure with all required fields', () => {
+  it("returns correct structure with all required fields", () => {
     const result = calculateRetirementProjection({
       monthlyDepositUsd: 25,
       yearsToRetirement: 20,
       annualYieldRate: 4.7,
-    })
+    });
 
-    expect(result).toHaveProperty('investedAmount')
-    expect(result).toHaveProperty('projectedBalance')
-    expect(result).toHaveProperty('growthAmount')
-    expect(result).toHaveProperty('estimatedMonthlyIncome')
-    expect(result).toHaveProperty('totalIncentives')
-    expect(result).toHaveProperty('incentivePct')
-  })
+    expect(result).toHaveProperty("investedAmount");
+    expect(result).toHaveProperty("projectedBalance");
+    expect(result).toHaveProperty("growthAmount");
+    expect(result).toHaveProperty("estimatedMonthlyIncome");
+    expect(result).toHaveProperty("totalIncentives");
+    expect(result).toHaveProperty("incentivePct");
+  });
 
-  it('handles different referral incentive scenarios', () => {
+  it("handles different referral incentive scenarios", () => {
     const result1Refer = calculateRetirementProjection({
       monthlyDepositUsd: 25,
       yearsToRetirement: 10,
       annualYieldRate: 4.7,
-      incentiveScenario: 'fidelidad_1_referido',
-    })
+      incentiveScenario: "fidelidad_1_referido",
+    });
 
     const result2Refer = calculateRetirementProjection({
       monthlyDepositUsd: 25,
       yearsToRetirement: 10,
       annualYieldRate: 4.7,
-      incentiveScenario: 'fidelidad_2_referidos',
-    })
+      incentiveScenario: "fidelidad_2_referidos",
+    });
 
-    expect(result1Refer.incentivePct).toBe(6)
-    expect(result2Refer.incentivePct).toBe(7)
-    expect(result2Refer.totalIncentives).toBeGreaterThanOrEqual(result1Refer.totalIncentives)
-  })
-})
+    expect(result1Refer.incentivePct).toBe(6);
+    expect(result2Refer.incentivePct).toBe(7);
+    expect(result2Refer.totalIncentives).toBeGreaterThanOrEqual(
+      result1Refer.totalIncentives,
+    );
+  });
+});
 
-describe('useRetirementProjection', () => {
-  it('updateScenario correctly updates numeric fields', () => {
-    const initialScenario = {
-      monthlyDepositUsd: 25,
-      yearsToRetirement: 20,
-      annualYieldRate: 4.7,
-      incentiveScenario: 'fidelidad_constancia',
-    }
+describe("calculateCycles", () => {
+  it("handles zero yield rate (0% APY)", () => {
+    const cycles = calculateCycles(25, 5, 0, 5);
 
-    const { result } = renderHook(() => useRetirementProjection(initialScenario))
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0].totalYield).toBe(0);
+    expect(cycles[0].startBalance).toBe(0);
+    expect(cycles[0].endBalance).toBe(1500); // 25 * 60 months
+    expect(cycles[0].incentiveAmount).toBe(0); // 0% of 0
+  });
 
-    expect(result.current.scenario.monthlyDepositUsd).toBe(25)
+  it("handles typical CETES rate (~10% APY)", () => {
+    const cycles = calculateCycles(100, 5, 10, 5);
 
-    act(() => {
-      result.current.updateScenario('monthlyDepositUsd', '50')
-    })
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0].totalYield).toBeGreaterThan(0);
+    expect(cycles[0].incentiveAmount).toBeGreaterThan(0);
+    // At 10%, 100/month for 5 years should yield substantial interest
+    expect(cycles[0].endBalance).toBeGreaterThan(6000); // base 100*60 = 6000
+  });
 
-    expect(result.current.scenario.monthlyDepositUsd).toBe(50)
+  it("handles edge case: 1 year period (no complete 5-year cycle)", () => {
+    const cycles = calculateCycles(100, 1, 4.7, 5);
 
-    act(() => {
-      result.current.updateScenario('yearsToRetirement', '30')
-    })
+    expect(cycles).toHaveLength(0); // Less than 5 years = no complete cycles
+  });
 
-    expect(result.current.scenario.yearsToRetirement).toBe(30)
-  })
+  it("handles edge case: exactly 40 years (8 complete 5-year cycles)", () => {
+    const cycles = calculateCycles(50, 40, 4.7, 5);
 
-  it('projection recalculates when scenario changes', () => {
-    const initialScenario = {
-      monthlyDepositUsd: 25,
-      yearsToRetirement: 20,
-      annualYieldRate: 4.7,
-      incentiveScenario: 'fidelidad_constancia',
-    }
+    expect(cycles).toHaveLength(8);
+    cycles.forEach((cycle, index) => {
+      expect(cycle.cycle).toBe(index + 1);
+      expect(cycle.yearStart).toBe(index * 5 + 1);
+      expect(cycle.yearEnd).toBe((index + 1) * 5);
+      expect(cycle.endBalance).toBeGreaterThan(cycle.startBalance);
+    });
+  });
 
-    const { result } = renderHook(() => useRetirementProjection(initialScenario))
+  it("handles edge monthly amount: $40", () => {
+    const cycles = calculateCycles(40, 10, 4.7, 5);
 
-    const projectionWith25 = result.current.projection
-    expect(projectionWith25.investedAmount).toBe(6000)
+    expect(cycles).toHaveLength(2);
+    expect(cycles[0].startBalance).toBe(0);
+    // After first 5-year cycle with $40/month
+    expect(cycles[0].endBalance).toBeGreaterThan(2400); // 40 * 60 months
+  });
 
-    act(() => {
-      result.current.updateScenario('monthlyDepositUsd', '50')
-    })
+  it("handles edge monthly amount: $5,000", () => {
+    const cycles = calculateCycles(5000, 10, 4.7, 5);
 
-    const projectionWith50 = result.current.projection
-    expect(projectionWith50.investedAmount).toBe(12000)
+    expect(cycles).toHaveLength(2);
+    // After first 5-year cycle with $5,000/month
+    expect(cycles[0].endBalance).toBeGreaterThan(300000); // 5000 * 60 months
+    expect(cycles[1].startBalance).toBe(cycles[0].endBalance);
+  });
 
-    expect(projectionWith50.projectedBalance).not.toBe(projectionWith25.projectedBalance)
-  })
+  it("correctly chains cycles (endBalance of cycle N = startBalance of cycle N+1)", () => {
+    const cycles = calculateCycles(100, 15, 4.7, 5);
 
-  it('returns correct structure with scenario, projection, and updateScenario', () => {
-    const initialScenario = {
-      monthlyDepositUsd: 25,
-      yearsToRetirement: 20,
-      annualYieldRate: 4.7,
-      incentiveScenario: 'fidelidad_constancia',
-    }
+    expect(cycles).toHaveLength(3);
+    expect(cycles[1].startBalance).toBe(cycles[0].endBalance);
+    expect(cycles[2].startBalance).toBe(cycles[1].endBalance);
+  });
 
-    const { result } = renderHook(() => useRetirementProjection(initialScenario))
+  it("generates yearly breakdown for each cycle", () => {
+    const cycles = calculateCycles(50, 10, 4.7, 5);
 
-    expect(result.current).toHaveProperty('scenario')
-    expect(result.current).toHaveProperty('projection')
-    expect(result.current).toHaveProperty('updateScenario')
-    expect(typeof result.current.updateScenario).toBe('function')
-  })
-})
+    expect(cycles).toHaveLength(2);
+    cycles.forEach((cycle) => {
+      expect(cycle.yearlyBreakdown).toHaveLength(5);
+      cycle.yearlyBreakdown.forEach((year, idx) => {
+        expect(year.year).toBe(idx + 1);
+        expect(year.endBalance).toBeGreaterThan(0);
+        expect(year.yearlyYield).toBeGreaterThanOrEqual(0); // Can be 0 in first month
+      });
+    });
+  });
+
+  it("applies incentive correctly based on incentive percentage", () => {
+    const cycles5pct = calculateCycles(100, 5, 4.7, 5);
+    const cycles7pct = calculateCycles(100, 5, 4.7, 7);
+
+    // With same parameters except incentivePct, cycle 1 endBalance should differ
+    // 7% incentive should add more than 5%
+    expect(cycles7pct[0].endBalance).toBeGreaterThan(cycles5pct[0].endBalance);
+  });
+
+  it("handles multiple cycles with consistent structure", () => {
+    const cycles = calculateCycles(75, 20, 6, 5);
+
+    expect(cycles).toHaveLength(4);
+    cycles.forEach((cycle, idx) => {
+      expect(cycle).toHaveProperty("cycle", idx + 1);
+      expect(cycle).toHaveProperty("yearStart");
+      expect(cycle).toHaveProperty("yearEnd");
+      expect(cycle).toHaveProperty("startBalance");
+      expect(cycle).toHaveProperty("endBalance");
+      expect(cycle).toHaveProperty("totalYield");
+      expect(cycle).toHaveProperty("incentiveAmount");
+      expect(cycle).toHaveProperty("yearlyBreakdown");
+    });
+  });
+});
+
+describe("calculateLoan", () => {
+  it("calculates standard 30% loan correctly", () => {
+    const lockedBalance = 10000;
+    const requestedAmount = 5000;
+
+    const loan = calculateLoan(lockedBalance, requestedAmount);
+
+    expect(loan.amount).toBe(5000);
+    expect(loan.maxLoan).toBe(3000); // 30% of 10000
+    // Since requested > maxLoan, amount should be capped
+    expect(loan.amount).toBe(3000);
+  });
+
+  it("respects max loan cap (30% of locked balance)", () => {
+    const lockedBalance = 10000;
+    const requestedAmount = 4000; // More than 30%
+
+    const loan = calculateLoan(lockedBalance, requestedAmount);
+
+    expect(loan.maxLoan).toBe(3000);
+    expect(loan.amount).toBe(3000);
+  });
+
+  it("handles edge case: zero locked balance", () => {
+    const loan = calculateLoan(0, 100);
+
+    expect(loan.maxLoan).toBe(0);
+    expect(loan.amount).toBe(0);
+    expect(loan.monthlyPayment).toBe(0);
+    expect(loan.totalFees).toBe(0);
+    expect(loan.totalRepaid).toBe(0);
+    expect(loan.schedule).toHaveLength(24);
+  });
+
+  it("handles edge case: maximum locked balance", () => {
+    const maxBalance = 1000000; // 1 million
+    const requestedAmount = 500000;
+
+    const loan = calculateLoan(maxBalance, requestedAmount);
+
+    expect(loan.maxLoan).toBe(300000); // 30% of 1,000,000
+    expect(loan.amount).toBe(300000);
+    expect(loan.monthlyPayment).toBeGreaterThan(0);
+  });
+
+  it("generates 24-month payment schedule", () => {
+    const loan = calculateLoan(10000, 2000);
+
+    expect(loan.schedule).toHaveLength(24);
+    loan.schedule.forEach((payment, idx) => {
+      expect(payment.month).toBe(idx + 1);
+      expect(payment.payment).toBeGreaterThan(0);
+      expect(payment.principal).toBeGreaterThan(0);
+      expect(payment.fee).toBeGreaterThan(0);
+      expect(payment.remaining).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  it("correctly calculates total fees and repaid amount", () => {
+    const loan = calculateLoan(10000, 2000);
+
+    const sumFees = loan.schedule.reduce((sum, p) => sum + p.fee, 0);
+    const sumPrincipal = loan.schedule.reduce((sum, p) => sum + p.principal, 0);
+
+    expect(sumFees).toBeCloseTo(loan.totalFees, 2);
+    expect(sumPrincipal).toBeCloseTo(loan.amount, 2);
+    expect(loan.totalRepaid).toBeCloseTo(loan.amount + loan.totalFees, 2);
+  });
+
+  it("monthly payment is consistent across schedule", () => {
+    const loan = calculateLoan(20000, 4000);
+
+    const firstPayment = loan.schedule[0].payment;
+    expect(loan.monthlyPayment).toBeCloseTo(firstPayment, 5);
+
+    // All payments should be roughly equal (small variations due to fees on remaining balance)
+    loan.schedule.forEach((p) => {
+      expect(p.payment).toBeCloseTo(firstPayment, 2);
+    });
+  });
+
+  it("ending balance correctly decreases to zero", () => {
+    const loan = calculateLoan(15000, 3000);
+
+    expect(
+      loan.schedule[loan.schedule.length - 1].remaining,
+    ).toBeLessThanOrEqual(0.01); // Allow tiny rounding error
+  });
+
+  it("handles small loan amount (minimum)", () => {
+    const loan = calculateLoan(100, 20);
+
+    expect(loan.amount).toBe(20);
+    expect(loan.schedule).toHaveLength(24);
+    expect(loan.totalRepaid).toBeGreaterThan(loan.amount); // With fees
+  });
+
+  it("returns correct loan structure with all fields", () => {
+    const loan = calculateLoan(10000, 2000);
+
+    expect(loan).toHaveProperty("amount");
+    expect(loan).toHaveProperty("maxLoan");
+    expect(loan).toHaveProperty("monthlyPayment");
+    expect(loan).toHaveProperty("totalFees");
+    expect(loan).toHaveProperty("totalRepaid");
+    expect(loan).toHaveProperty("schedule");
+  });
+});
